@@ -1,0 +1,71 @@
+default_config:
+
+
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+#testing homekit with inputs
+#groups
+notify:
+  - platform: group
+    name: "My Devices"
+    services:
+      - action: mobile_app_iphone
+      - action: mobile_app_neonpanda
+
+#template for lock apple home.. schlage
+template:
+  - lock:
+      - name: "Front Door Lock"
+        unique_id: front_door_lock
+        state: "{{ is_state('input_boolean.schlage_state', 'on') }}"
+        lock:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.schlage_lock
+          - delay: "00:00:01"
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.schlage_lock
+        unlock:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.schlage_unlock
+          - delay: "00:00:01"
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.schlage_unlock
+  - sensor:
+      - name: "Feels Like"
+        unique_id: feels_like_outdoor
+        unit_of_measurement: "°F"
+        device_class: temperature
+        state: >
+          {% set t = state_attr('weather.nws_home', 'temperature') | float(0) %}
+          {% set rh = state_attr('weather.nws_home', 'humidity') | float(0) %}
+          {% set ws = state_attr('weather.nws_home', 'wind_speed') | float(0) %}
+          {% if t >= 80 %}
+            {% set hi = -42.379 + 2.04901523*t + 10.14333127*rh - 0.22475541*t*rh - 0.00683783*t*t - 0.05481717*rh*rh + 0.00122874*t*t*rh + 0.00085282*t*rh*rh - 0.00000199*t*t*rh*rh %}
+            {{ hi | round(0) }}
+          {% elif t <= 50 and ws >= 3 %}
+            {% set wc = 35.74 + 0.6215*t - 35.75*(ws**0.16) + 0.4275*t*(ws**0.16) %}
+            {{ wc | round(0) }}
+          {% else %}
+            {{ t | round(0) }}
+          {% endif %}
+sensor:
+  - platform: statistics
+    name: "Cat Food 30-Day Average"
+    unique_id: cat_food_30d_avg
+    entity_id: input_number.daily_food_total
+    state_characteristic: mean
+    max_age:
+      days: 30
+    sampling_size: 50
+
+# Shell command to write daily cat food totals to find average later in sqlite
+shell_command:
+  log_cat_food: "python3 /config/log_cat_food.py {{ states('sensor.theos_personal_chef_today_s_feeding_quantity_weight') | float(0) }}"

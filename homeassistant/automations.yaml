@@ -1,0 +1,556 @@
+- id: '1776395209174'
+  alias: Coming Home
+  description: ''
+  triggers:
+  - device_id: 51a75034eed4cec9f19a041ff0ee3f11
+    domain: device_tracker
+    entity_id: 7c07126d85c1db28aa2b903fe8cb997b
+    type: enters
+    trigger: device
+    zone: zone.unlock_door
+  conditions: []
+  actions:
+  - action: lock.unlock
+    metadata: {}
+    target:
+      entity_id: lock.front_door_lock_2
+    data: {}
+  - action: notify.my_devices
+    metadata: {}
+    data:
+      message: Victor is Home!
+      title: Door Unlocked
+  mode: single
+- id: '1776501587516'
+  alias: Frigate Notifications (0.14.0.2y)
+  description: ''
+  use_blueprint:
+    path: SgtBatten/Stable.yaml
+    input:
+      camera:
+      - camera.amcrest
+      - camera.amcrest_kitchen
+      notify_device: 51a75034eed4cec9f19a041ff0ee3f11
+      notify_group: My Devices
+      debug: false
+      base_url: <redacting url> #using nabu casa for this to view outside of local home
+      review_severity:
+      - alert
+      labels:
+      - bird
+      - car
+      update_thumbnail: true
+      attachment: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/thumbnail.jpg'
+      tap_action: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/{{camera}}/master.m3u8'
+      url_1: /ccab4aaf_frigate-fa/dashboard
+      message: '{{ label }} detected - {{ camera_name }}'
+      final_update: true
+      redacted: false
+      icon: mdi:{{'account-outline' if label == 'Person' else 'dog' if label == 'Dog'
+        else 'cat' if label == 'Cat' else 'car' if label == 'Car' else 'home-assistant'}}
+      button_1: Go to Dashboard
+      ios_live_view: camera.amcrest_kitchen
+- id: '1776623000144'
+  alias: Notification_Dockstream 2 Smart Cordless Fountain Water State
+  description: ''
+  triggers:
+  - trigger: numeric_state
+    entity_id:
+    - sensor.dockstream_2_smart_cordless_fountain_remaining_water
+    above: 21.97
+    below: 37.18
+  conditions:
+  - condition: state
+    entity_id: input_boolean.fountain_notified_today
+    state:
+    - 'off'
+  actions:
+  - action: notify.my_devices
+    metadata: {}
+    data:
+      message: 'Dockstream 2 Smart Cordless Fountain is running low on water! Current
+        level: {{ states(sensor.dockstream_2_smart_cordless_fountain_remaining_water)
+        }}%'
+  - action: input_boolean.toggle
+    metadata: {}
+    target:
+      entity_id: input_boolean.fountain_notified_today
+    data: {}
+  mode: single
+- id: '1776623182675'
+  alias: input_bool.fountain reset
+  description: ''
+  triggers:
+  - trigger: time
+    at: 08:00:00
+  conditions: []
+  actions:
+  - action: input_boolean.turn_off
+    metadata: {}
+    target:
+      entity_id: input_boolean.fountain_notified_today
+    data: {}
+  mode: single
+- id: '1776757313214'
+  alias: Bedroom temperature control
+  description: Cool above 73.5, heat below 72, notify to open window if outside is
+    cold and dry enough (daytime only)
+  triggers:
+  - trigger: time_pattern
+    minutes: /5
+  - trigger: numeric_state
+    entity_id: sensor.bedroom_sensor_temperature
+    above: 73.5
+  - trigger: numeric_state
+    entity_id: sensor.bedroom_sensor_temperature
+    below: 72
+  - trigger: template
+    value_template: '{{ state_attr(''weather.nws_home_loc'',
+      ''temperature'') | float(0) > 70 }}'
+  actions:
+  - choose:
+    - conditions:
+      - condition: numeric_state
+        entity_id: sensor.bedroom_sensor_temperature
+        above: 73.5
+      - condition: template
+        value_template: '{{ state_attr(''weather.nws_home_loc'',
+          ''temperature'') | float(70) < 70 }}'
+      - condition: template
+        value_template: '{{ state_attr(''weather.nws_home_loc'',
+          ''humidity'') | float(100) < 60 }}'
+      - condition: time
+        after: '10:00:00'
+        before: '22:00:00'
+      - condition: template
+        value_template: "{{ not is_state('device_tracker.7c07126d85c1db28aa2b903fe8cb997b',
+          'not_home')\n   or not is_state('device_tracker.26a174979f937d3ad6f1a563909a1f5c',
+          'not_home') }}"
+      - condition: template
+        value_template: '{{ (now() - states(''input_datetime.last_window_notification'')
+          | as_datetime | as_local).total_seconds() > 3600 }}'
+      sequence:
+      - action: notify.my_devices
+        data:
+          title: "\U0001FA9F Open a window"
+          message: 'Bedroom is {{ states(''sensor.bedroom_sensor_temperature'') }}°F
+            but it''s {{ state_attr(''weather.nws_home_loc'',
+            ''temperature'') }}°F and {{ state_attr(''weather.nws_home_loc'',
+            ''humidity'') }}% humidity outside — open a window instead of running
+            the AC.
+
+            '
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.last_window_notification
+        data:
+          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+    - conditions:
+      - condition: numeric_state
+        entity_id: sensor.bedroom_sensor_temperature
+        above: 73.5
+      - condition: template
+        value_template: '{{ state_attr(''weather.nws_home_loc'',
+          ''temperature'') | float(0) >= 70 or state_attr(''weather.nws_home_loc'',
+          ''humidity'') | float(100) >= 60 }}'
+      sequence:
+      - action: climate.set_hvac_mode
+        target:
+          entity_id: climate.thermostat
+        data:
+          hvac_mode: cool
+    - conditions:
+      - condition: numeric_state
+        entity_id: sensor.bedroom_sensor_temperature
+        below: 73.5
+      - condition: state
+        entity_id: climate.thermostat
+        state: cool
+      sequence:
+      - action: climate.set_hvac_mode
+        target:
+          entity_id: climate.thermostat
+        data:
+          hvac_mode: 'off'
+    - conditions:
+      - condition: numeric_state
+        entity_id: sensor.bedroom_sensor_temperature
+        below: 71.8
+      sequence:
+      - action: climate.set_hvac_mode
+        target:
+          entity_id: climate.thermostat
+        data:
+          hvac_mode: heat
+    - conditions:
+      - condition: numeric_state
+        entity_id: sensor.bedroom_sensor_temperature
+        above: 71.8
+      - condition: state
+        entity_id: climate.thermostat
+        state: heat
+      sequence:
+      - action: climate.set_hvac_mode
+        target:
+          entity_id: climate.thermostat
+        data:
+          hvac_mode: 'off'
+  mode: restart
+- id: '1776797943239'
+  alias: Paycheck notification
+  description: ''
+  triggers:
+  - trigger: time
+    at: 08:00:00
+    weekday:
+    - wed
+  conditions:
+  - condition: template
+    value_template: '{{ now().strftime(''%U'') | int % 2 == 1 }}'
+  actions:
+  - data:
+      title: Check Your Check!
+      message: "\U0001F911\U0001F4B0\U0001F4B8\U0001F4B5"
+      data:
+        url: https://ess.costco.com
+    action: notify.my_devices
+  mode: single
+- id: '1776814751310'
+  alias: unlock_home_neon_panda
+  description: ''
+  triggers:
+  - device_id: 7d98fc0e0abf2d03fd7153f871f3ea9e
+    domain: device_tracker
+    entity_id: 26a174979f937d3ad6f1a563909a1f5c
+    type: enters
+    trigger: device
+    zone: zone.unlock_door
+  conditions: []
+  actions:
+  - action: lock.unlock
+    metadata: {}
+    target:
+      entity_id: lock.front_door_lock_2
+    data: {}
+  - action: notify.my_devices
+    metadata: {}
+    data:
+      message: Alejandra is Home!
+      title: Door Unlocked
+  mode: single
+- id: '1776822432652'
+  alias: Log Daily Cat Food
+  description: Captures the day's total cat food intake at 23:59 and logs it
+  triggers:
+  - trigger: time
+    at: '23:59:50'
+  conditions: []
+  actions:
+  - action: input_number.set_value
+    target:
+      entity_id: input_number.daily_food_total
+    data:
+      value: '{{ states(''sensor.theos_personal_chef_today_s_feeding_quantity_weight'')
+        | float(0) }}'
+  - action: shell_command.log_cat_food
+  mode: single
+- alias: Travel Time - Frequent Refresh
+  trigger:
+  - platform: time
+    at: '10:00:00'
+  action:
+  - service: homeassistant.set_entity_scan_interval
+    target:
+      entity_id:
+      - sensor.wave_travel_time_itasca_travel_time
+      - sensor.wave_travel_time_addison_travel_time
+    data:
+      scan_interval: 120
+  id: 1626117577fa4e3a98f19449f240632a
+- alias: Travel Time - Normal Refresh
+  trigger:
+  - platform: time
+    at: '12:00:00'
+  action:
+  - service: homeassistant.set_entity_scan_interval
+    target:
+      entity_id:
+      - sensor.wave_travel_time_itasca_travel_time
+      - sensor.wave_travel_time_addison_travel_time
+    data:
+      scan_interval: 600
+  id: 3e50d29b06eb4546a0d865b9c201a4c4
+- id: '1776974928128'
+  alias: Frigate Notifications - Doorbell
+  description: ''
+  use_blueprint:
+    path: SgtBatten/Stable.yaml
+    input:
+      camera:
+      - camera.doorbell
+      notify_device: 51a75034eed4cec9f19a041ff0ee3f11
+      notify_group: My Devices
+      debug: true
+      base_url: <redacted url>
+      review_severity:
+      - alert
+      - detection
+      zone_filter: false
+      zones: []
+      labels:
+      - bird
+      - cat
+      - dog
+      - package
+      - person
+      - amazon
+      - fedex
+      - ups
+      - usps
+      update_thumbnail: true
+      attachment: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/thumbnail.jpg'
+      tap_action: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/{{camera}}/master.m3u8'
+      url_1: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/master.m3u8'
+      url_2: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/snapshot.jpg'
+      message: '{{ label }} detected - {{ camera_name }}'
+      final_update: false
+      redacted: false
+      icon: mdi:{{'account-outline' if label == 'Person' else 'dog' if label == 'Dog'
+        else 'cat' if label == 'Cat' else 'car' if label == 'Car' else 'home-assistant'}}
+      button_1: View Stream
+      update_sub_label: false
+- id: '1776975442122'
+  alias: Doorbell - Dashboard Popup
+  description: ''
+  triggers:
+  - entity_id: binary_sensor.doorbell_visitor
+    to: 'on'
+    trigger: state
+  actions:
+  - data:
+      dismissable: true
+      size: fullscreen
+      style: '--popup-padding-x: 0px;
+
+        --popup-padding-y: 0px;
+
+        --popup-background-color: black;
+
+        '
+      content:
+        type: custom:advanced-camera-card
+        cameras:
+        - camera_entity: camera.doorbell
+          engine: frigate
+          live_provider: go2rtc
+        view:
+          default: live
+        live:
+          microphone:
+            always_connected: false
+        menu:
+          style: overlay
+          buttons:
+            microphone:
+              enabled: true
+              type: toggle
+            mute:
+              enabled: true
+    action: browser_mod.popup
+- id: '1776979426578'
+  alias: Doorbell - Button Press
+  description: ''
+  triggers:
+  - trigger: state
+    entity_id: binary_sensor.doorbell_visitor
+    to: 'on'
+  conditions: []
+  actions:
+  - action: reolink.play_chime
+    data:
+      device_id:
+      - 95862e88f0b039850aa7c92405fd4d68
+      ringtone: citybird
+  - data:
+      title: "\U0001F514 Doorbell"
+      message: Someone at the door!
+      data:
+        entity_id: camera.doorbell
+        url: homeassistant://navigate/lovelace/cameras
+    action: notify.mobile_app_iphone
+  mode: single
+- id: '1777143301618'
+  alias: Frigate Notifications - Doorbell - Car Detected
+  description: ''
+  use_blueprint:
+    path: SgtBatten/Stable.yaml
+    input:
+      camera:
+      - camera.doorbell
+      notify_device: 51a75034eed4cec9f19a041ff0ee3f11
+      notify_group: My Devices
+      debug: true
+      base_url: <redacted url>
+      review_severity:
+      - detection
+      - alert
+      zone_filter: true
+      zones:
+      - driveway
+      labels:
+      - car
+      update_thumbnail: true
+      attachment: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/thumbnail.jpg'
+      tap_action: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/{{camera}}/master.m3u8'
+      url_1: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/master.m3u8'
+      url_2: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/snapshot.jpg'
+      message: '{{ label }}{{ '' was'' if type == ''end'' else '''' }} detected {{''
+        in the '' if after_zones|length}}{{ after_zones | join('', '') | replace(''_'',
+        '' '' ) | title }}.'
+      final_update: false
+      redacted: false
+      icon: mdi:{{'account-outline' if label == 'Person' else 'dog' if label == 'Dog'
+        else 'cat' if label == 'Cat' else 'car' if label == 'Car' else 'home-assistant'}}
+      button_1: View Stream
+      zone_multi: false
+      zone_order_enforced: false
+      update_sub_label: false
+- id: '1777150057193'
+  alias: Fountain Water Low Alert
+  description: ''
+  triggers:
+  - trigger: numeric_state
+    entity_id: sensor.dockstream_2_smart_cordless_fountain_remaining_water
+    below: number.dockstream_2_smart_cordless_fountain_water_low_threshold
+  conditions:
+  - condition: template
+    value_template: '{{ now() > states(''input_datetime.fountain_silence_until'')
+      | as_datetime }}
+
+      '
+  actions:
+  - action: notify.my_devices
+    data:
+      title: "\U0001F43E Fountain Water Low"
+      message: "Water level is at {{ states('sensor.dockstream_2_smart_cordless_fountain_remaining_water')
+        | float(0) | round(2) }} fl. oz (threshold: {{ states('number.dockstream_2_smart_cordless_fountain_water_low_threshold')
+        }}) Theo and Jinu are parched!!! \U0001F431\U0001F431\n"
+      data:
+        actions:
+        - action: SILENCE_1H
+          title: Silence 1 Hour
+        - action: SILENCE_4H
+          title: Silence 4 Hours
+        - action: SILENCE_24H
+          title: Silence 24 Hours
+  - wait_for_trigger:
+    - trigger: event
+      event_type: mobile_app_notification_action
+      event_data:
+        action: SILENCE_1H
+    - trigger: event
+      event_type: mobile_app_notification_action
+      event_data:
+        action: SILENCE_4H
+    - trigger: event
+      event_type: mobile_app_notification_action
+      event_data:
+        action: SILENCE_24H
+    timeout: '24:00:00'
+    continue_on_timeout: false
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ wait.trigger.event.data.action == ''SILENCE_1H'' }}'
+      sequence:
+      - action: input_datetime.set_datetime
+        data:
+          entity_id: input_datetime.fountain_silence_until
+          datetime: '{{ (now() + timedelta(hours=1)).strftime(''%Y-%m-%d %H:%M:%S'')
+            }}'
+    - conditions:
+      - condition: template
+        value_template: '{{ wait.trigger.event.data.action == ''SILENCE_4H'' }}'
+      sequence:
+      - action: input_datetime.set_datetime
+        data:
+          entity_id: input_datetime.fountain_silence_until
+          datetime: '{{ (now() + timedelta(hours=4)).strftime(''%Y-%m-%d %H:%M:%S'')
+            }}'
+    - conditions:
+      - condition: template
+        value_template: '{{ wait.trigger.event.data.action == ''SILENCE_24H'' }}'
+      sequence:
+      - action: input_datetime.set_datetime
+        data:
+          entity_id: input_datetime.fountain_silence_until
+          datetime: '{{ (now() + timedelta(hours=24)).strftime(''%Y-%m-%d %H:%M:%S'')
+            }}'
+  mode: single
+- id: '1777313067138'
+  alias: Notify on New Weather Alert
+  description: Sends a notification per NWS alert when count changes from 0
+  triggers:
+  - entity_id: sensor.nws_alerts_alerts
+    trigger: state
+  conditions:
+  - condition: numeric_state
+    entity_id: sensor.nws_alerts_alerts
+    above: 0
+  actions:
+  - repeat:
+      for_each: '{{ state_attr(''sensor.nws_alerts_alerts'', ''Alerts'') }}'
+      sequence:
+      - data:
+          title: ⚠️ {{ repeat.item.Event }}
+          message: '{{ repeat.item.Headline }}'
+          data:
+            url: /dashboard-dashboard/weather
+            push:
+              sound: default
+            actions:
+            - action: URI
+              title: View Alert
+              uri: /dashboard-dashboard/weather
+        action: notify.my_devices
+- id: '1777427969671'
+  alias: Delivery Cars Notifications
+  description: ''
+  use_blueprint:
+    path: SgtBatten/Stable.yaml
+    input:
+      camera:
+      - camera.doorbell
+      notify_device: 51a75034eed4cec9f19a041ff0ee3f11
+      debug: true
+      base_url: <redacted url>
+      review_severity:
+      - detection
+      - alert
+      zone_filter: false
+      zones: []
+      labels:
+      - fedex
+      - ups
+      - usps
+      - amazon
+      - dhl
+      update_thumbnail: true
+      attachment: '{{base_url}}/api/frigate{{client_id}}/notifications/{{review_id}}/review_preview.gif'
+      tap_action: /ccab4aaf_frigate-proxy/dashboard
+      url_1: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/master.m3u8'
+      url_2: '{{base_url}}/api/frigate{{client_id}}/notifications/{{id}}/snapshot.jpg'
+      message: '{{ label }}{{ '' was'' if type == ''end'' else '''' }} detected on
+        the {{ camera_name }} camera{{'' in the '' if after_zones|length}}{{ after_zones
+        | join('', '') | replace(''_'', '' '' ) | title }}.'
+      final_update: false
+      redacted: false
+      icon: mdi:{{'account-outline' if label == 'Person' else 'dog' if label == 'Dog'
+        else 'cat' if label == 'Cat' else 'car' if label == 'Car' else 'home-assistant'}}
+      button_1: View Stream
+      zone_multi: false
+      zone_order_enforced: false
+      tv: false
+      attachment_2: '{{base_url}}/api/frigate{{client_id}}/notifications/{{review_id}}/review_preview.gif'
+      notify_group: My Devices
+      update_sub_label: false
